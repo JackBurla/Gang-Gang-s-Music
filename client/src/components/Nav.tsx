@@ -32,9 +32,6 @@ export default function Nav() {
           <span className="wordmark text-2xl text-ink-100 sm:text-3xl">
             gang gang&rsquo;s music
           </span>
-          <span className="hidden text-[10px] uppercase tracking-[0.3em] text-ink-300 group-hover:text-accent sm:inline">
-            est. now
-          </span>
         </Link>
         <nav className="flex flex-wrap items-center gap-1.5">
           <NavLink to="/" end className={({ isActive }) => clsxLink(isActive)}>
