@@ -130,6 +130,67 @@ export function artistImageOverrideAlbum(artistName: string): string | null {
   return ARTIST_IMAGE_OVERRIDES[normalize(artistName)] ?? null;
 }
 
+// Per-album display override: forces a specific iTunes album title for these
+// (artist, album) pairs whenever they're shown. Used to fix already-submitted
+// rows in the DB without a backfill — applied wherever album image_urls are
+// served (aggregate + per-user pages).
+// Keyed by `${normalize(artist)}|${normalize(album)}`.
+const ALBUM_DISPLAY_OVERRIDES: Record<string, string> = {
+  // Weezer Blue Album: force the 2024 Remaster cover (original iconic blue
+  // art) over the Deluxe Edition cover that older picks may have stored.
+  "weezer|weezer": "Weezer (2024 Remaster)",
+  "weezer|bluealbum": "Weezer (2024 Remaster)",
+  "weezer|weezerbluealbum": "Weezer (2024 Remaster)",
+};
+
+export function albumImageOverrideTitle(
+  album: string,
+  artist: string
+): string | null {
+  const key = `${normalize(artist)}|${normalize(album)}`;
+  return ALBUM_DISPLAY_OVERRIDES[key] ?? null;
+}
+
+// Long-lived in-process cache of resolved override URLs so we don't re-hit
+// iTunes on every request. Separate from the 15-min `cache` for general
+// lookups because override URLs are extremely stable.
+const overrideUrlCache = new Map<string, string | null>();
+
+export async function resolveArtistOverrideUrl(
+  artistName: string
+): Promise<string | null> {
+  const key = `artist:${normalize(artistName)}`;
+  if (overrideUrlCache.has(key)) return overrideUrlCache.get(key) ?? null;
+
+  const albumTitle = artistImageOverrideAlbum(artistName);
+  if (!albumTitle) {
+    overrideUrlCache.set(key, null);
+    return null;
+  }
+  const art = await lookupAlbum(albumTitle, artistName);
+  const url = art.imageUrl ?? null;
+  overrideUrlCache.set(key, url);
+  return url;
+}
+
+export async function resolveAlbumOverrideUrl(
+  album: string,
+  artist: string
+): Promise<string | null> {
+  const key = `album:${normalize(artist)}|${normalize(album)}`;
+  if (overrideUrlCache.has(key)) return overrideUrlCache.get(key) ?? null;
+
+  const overrideTitle = albumImageOverrideTitle(album, artist);
+  if (!overrideTitle) {
+    overrideUrlCache.set(key, null);
+    return null;
+  }
+  const art = await lookupAlbum(overrideTitle, artist);
+  const url = art.imageUrl ?? null;
+  overrideUrlCache.set(key, url);
+  return url;
+}
+
 // Lightweight TTL cache so the form's live previews don't hammer iTunes.
 const cache = new Map<string, { value: Artwork; expires: number }>();
 const CACHE_TTL_MS = 15 * 60 * 1000;

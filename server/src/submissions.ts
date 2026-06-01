@@ -1,6 +1,11 @@
 import crypto from "node:crypto";
 import { pool, withTx } from "./db.js";
-import { lookupAlbum, lookupArtist } from "./itunes.js";
+import {
+  lookupAlbum,
+  lookupArtist,
+  resolveAlbumOverrideUrl,
+  resolveArtistOverrideUrl,
+} from "./itunes.js";
 import { invalidateAggregateCache } from "./aggregate.js";
 import type {
   Submission,
@@ -277,20 +282,38 @@ export async function getSubmission(name: string): Promise<Submission | null> {
     ),
   ]);
 
+  // Apply the same display-time overrides that the home aggregate uses, so
+  // user pages don't "revert" to the originally-stored iTunes URLs.
+  const artists = await Promise.all(
+    artistsRes.rows.map(async (r) => {
+      const override = await resolveArtistOverrideUrl(r.artist_name);
+      return {
+        rank: r.rank,
+        name: r.artist_name,
+        imageUrl: override ?? r.image_url,
+      };
+    })
+  );
+  const albums = await Promise.all(
+    albumsRes.rows.map(async (r) => {
+      const override = await resolveAlbumOverrideUrl(
+        r.album_name,
+        r.artist_name
+      );
+      return {
+        rank: r.rank,
+        album: r.album_name,
+        artist: r.artist_name,
+        imageUrl: override ?? r.image_url,
+      };
+    })
+  );
+
   return {
     name: sub.name,
     createdAt: sub.created_at.toISOString(),
     updatedAt: sub.updated_at.toISOString(),
-    artists: artistsRes.rows.map((r) => ({
-      rank: r.rank,
-      name: r.artist_name,
-      imageUrl: r.image_url,
-    })),
-    albums: albumsRes.rows.map((r) => ({
-      rank: r.rank,
-      album: r.album_name,
-      artist: r.artist_name,
-      imageUrl: r.image_url,
-    })),
+    artists,
+    albums,
   };
 }

@@ -1,8 +1,7 @@
 import { pool } from "./db.js";
 import {
-  artistImageOverrideAlbum,
-  lookupAlbum,
-  normalize,
+  resolveAlbumOverrideUrl,
+  resolveArtistOverrideUrl,
 } from "./itunes.js";
 import type { AggregateResponse, AggregateRow } from "./types.js";
 
@@ -134,35 +133,25 @@ function withRanksAndTies(rows: AggregateRawRow[]): AggregateRow[] {
 let cache: { value: AggregateResponse; expires: number } | null = null;
 const CACHE_MS = 30_000;
 
-// Resolved override URLs by normalized artist name. Populated lazily on
-// aggregate cache misses; persists for the lifetime of the process so we don't
-// re-hit iTunes every 30 seconds.
-const overrideUrlCache = new Map<string, string | null>();
-
-async function resolveArtistOverrideUrl(
-  artistDisplayName: string
-): Promise<string | null> {
-  const key = normalize(artistDisplayName);
-  if (overrideUrlCache.has(key)) return overrideUrlCache.get(key) ?? null;
-
-  const album = artistImageOverrideAlbum(artistDisplayName);
-  if (!album) {
-    overrideUrlCache.set(key, null);
-    return null;
-  }
-
-  const art = await lookupAlbum(album, artistDisplayName);
-  const url = art.imageUrl ?? null;
-  overrideUrlCache.set(key, url);
-  return url;
-}
-
 async function applyArtistImageOverrides(
   rows: AggregateRow[]
 ): Promise<AggregateRow[]> {
   return Promise.all(
     rows.map(async (row) => {
       const url = await resolveArtistOverrideUrl(row.displayName);
+      if (!url) return row;
+      return { ...row, imageUrl: url };
+    })
+  );
+}
+
+async function applyAlbumImageOverrides(
+  rows: AggregateRow[]
+): Promise<AggregateRow[]> {
+  return Promise.all(
+    rows.map(async (row) => {
+      if (!row.artist) return row;
+      const url = await resolveAlbumOverrideUrl(row.displayName, row.artist);
       if (!url) return row;
       return { ...row, imageUrl: url };
     })
@@ -179,14 +168,15 @@ export async function getAggregate(): Promise<AggregateResponse> {
     pool.query<AggregateRawRow>(ARTISTS_BY_ALBUM_QUERY),
   ]);
 
-  const [artists, artistsByAlbumScore] = await Promise.all([
+  const [artists, albums, artistsByAlbumScore] = await Promise.all([
     applyArtistImageOverrides(withRanksAndTies(artistRows.rows)),
+    applyAlbumImageOverrides(withRanksAndTies(albumRows.rows)),
     applyArtistImageOverrides(withRanksAndTies(artistsByAlbumRows.rows)),
   ]);
 
   const value: AggregateResponse = {
     artists,
-    albums: withRanksAndTies(albumRows.rows),
+    albums,
     artistsByAlbumScore,
   };
 
