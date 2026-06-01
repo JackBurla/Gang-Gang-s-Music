@@ -41,7 +41,7 @@ export default function RankedCard({
   meta,
 }: Props) {
   return (
-    <div className="card">
+    <div className="card group">
       <div className="aspect-square w-full overflow-hidden">
         {imageUrl ? (
           <img

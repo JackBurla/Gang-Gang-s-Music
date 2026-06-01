@@ -46,7 +46,7 @@
   }
 
   .card {
-    @apply group relative overflow-hidden rounded-2xl border border-ink-800 bg-ink-900/70 transition;
+    @apply relative overflow-hidden rounded-2xl border border-ink-800 bg-ink-900/70 transition;
   }
 
   .card:hover {
