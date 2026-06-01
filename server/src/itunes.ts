@@ -105,6 +105,30 @@ function aliasFor(album: string, artist: string): string | null {
   return ALBUM_ALIASES[key] ?? null;
 }
 
+// Per-artist override: when someone picks one of these artists, the artist
+// tile uses the cover of the specified album instead of iTunes' default
+// "most recent album" pick. Keyed by normalized(artist).
+//
+// Applied at submission time (so new picks store the override URL) AND at
+// aggregate display time (so already-submitted picks also show the override
+// without a DB backfill).
+export const ARTIST_IMAGE_OVERRIDES: Record<string, string> = {
+  davidbowie: "Aladdin Sane",
+  bowie: "Aladdin Sane",
+  kendricklamar: "To Pimp a Butterfly",
+  kendrick: "To Pimp a Butterfly",
+  kdot: "To Pimp a Butterfly",
+  kanyewest: "Graduation",
+  kanye: "Graduation",
+  ye: "Graduation",
+  radiohead: "Kid A",
+  beatles: "Sgt. Pepper's Lonely Hearts Club Band",
+};
+
+export function artistImageOverrideAlbum(artistName: string): string | null {
+  return ARTIST_IMAGE_OVERRIDES[normalize(artistName)] ?? null;
+}
+
 // Lightweight TTL cache so the form's live previews don't hammer iTunes.
 const cache = new Map<string, { value: Artwork; expires: number }>();
 const CACHE_TTL_MS = 15 * 60 * 1000;
@@ -152,6 +176,16 @@ export async function lookupArtist(name: string): Promise<Artwork> {
   const cacheKey = `artist:${normalize(q)}`;
   const hit = fromCache(cacheKey);
   if (hit) return hit;
+
+  // Hard override: use a specific album cover for certain artists, regardless
+  // of what iTunes thinks is the artist's "default" album.
+  const overrideAlbum = artistImageOverrideAlbum(q);
+  if (overrideAlbum) {
+    const art = await lookupAlbum(overrideAlbum, q);
+    if (art.imageUrl) {
+      return cached(cacheKey, { imageUrl: art.imageUrl, matchedName: q });
+    }
+  }
 
   const { artistId, artistName } = await findArtistId(q);
 
