@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { fetchSubmission } from "../api";
+import { fetchSubmission, refreshArtwork } from "../api";
 import RankedCard from "../components/RankedCard";
 import { getEditToken } from "../editToken";
 import type { Submission } from "../types";
@@ -10,6 +10,7 @@ export default function UserPage() {
   const { name = "" } = useParams<{ name: string }>();
   const [sub, setSub] = useState<Submission | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -29,7 +30,21 @@ export default function UserPage() {
     };
   }, [name]);
 
-  const hasEditToken = Boolean(getEditToken(name));
+  const editToken = getEditToken(name);
+  const hasEditToken = Boolean(editToken);
+
+  async function onRefreshArtwork() {
+    if (!editToken) return;
+    setRefreshing(true);
+    try {
+      const { submission } = await refreshArtwork(name, editToken);
+      setSub(submission);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Refresh failed.");
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   if (error) {
     return (
@@ -63,9 +78,20 @@ export default function UserPage() {
           </p>
         </div>
         {hasEditToken && (
-          <Link to="/submit" className="btn-ghost">
-            Edit my picks
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={onRefreshArtwork}
+              disabled={refreshing}
+              className="btn-ghost disabled:cursor-not-allowed disabled:opacity-50"
+              title="Re-run the iTunes lookups for every pick"
+            >
+              {refreshing ? "Refreshing\u2026" : "Refresh artwork"}
+            </button>
+            <Link to="/submit" className="btn-ghost">
+              Edit my picks
+            </Link>
+          </div>
         )}
       </section>
 

@@ -187,6 +187,63 @@ export async function listSubmissions(): Promise<SubmissionSummary[]> {
   }));
 }
 
+export async function refreshSubmissionArtwork(
+  name: string,
+  editToken: string
+): Promise<Submission> {
+  const existing = await pool.query<{ id: number; edit_token: string }>(
+    "SELECT id, edit_token FROM submissions WHERE LOWER(name) = LOWER($1) LIMIT 1",
+    [name]
+  );
+  if (existing.rows.length === 0) {
+    throw new HttpError(404, "Submission not found.");
+  }
+  const row = existing.rows[0]!;
+  if (row.edit_token !== editToken) {
+    throw new HttpError(
+      403,
+      "Edit token doesn't match. Try refreshing from the same browser you originally submitted from."
+    );
+  }
+
+  const current = await getSubmission(name);
+  if (!current) {
+    throw new HttpError(404, "Submission not found.");
+  }
+
+  const enriched = await enrichSubmission({
+    name: current.name,
+    artists: current.artists.map((a) => a.name),
+    albums: current.albums.map((a) => ({ album: a.album, artist: a.artist })),
+  });
+
+  await withTx(async (client) => {
+    for (const a of enriched.artists) {
+      await client.query(
+        `UPDATE artist_picks SET image_url = $1
+         WHERE submission_id = $2 AND rank = $3`,
+        [a.imageUrl, row.id, a.rank]
+      );
+    }
+    for (const a of enriched.albums) {
+      await client.query(
+        `UPDATE album_picks SET image_url = $1
+         WHERE submission_id = $2 AND rank = $3`,
+        [a.imageUrl, row.id, a.rank]
+      );
+    }
+    await client.query(
+      "UPDATE submissions SET updated_at = NOW() WHERE id = $1",
+      [row.id]
+    );
+  });
+
+  invalidateAggregateCache();
+  const updated = await getSubmission(name);
+  if (!updated) throw new HttpError(500, "Refresh succeeded but reload failed.");
+  return updated;
+}
+
 export async function getSubmission(name: string): Promise<Submission | null> {
   const subRes = await pool.query<{
     id: number;

@@ -63,6 +63,19 @@ export function postSubmission(input: SubmitInput): Promise<{
   });
 }
 
+export function refreshArtwork(
+  name: string,
+  editToken: string
+): Promise<{ submission: Submission }> {
+  return request(
+    `/api/submissions/${encodeURIComponent(name)}/refresh-artwork`,
+    {
+      method: "POST",
+      body: JSON.stringify({ editToken }),
+    }
+  );
+}
+
 export type PreviewResponse = {
   imageUrl: string | null;
   matchedName: string | null;
