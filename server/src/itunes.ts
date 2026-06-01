@@ -77,10 +77,11 @@ export function normalize(s: string): string {
 // `collectionName` we should match against in the discography lookup.
 // Extend this list as you find gaps.
 const ALBUM_ALIASES: Record<string, string> = {
-  // Weezer color albums. iTunes uses "(<color> Album)" for all but the 1994 LP,
-  // which is filed as "Weezer (Deluxe Edition)".
-  "weezer|bluealbum": "Weezer (Deluxe Edition)",
-  "weezer|blue": "Weezer (Deluxe Edition)",
+  // Weezer color albums. iTunes uses "(<color> Album)" for all but the 1994 LP.
+  // For Blue Album we point to "Weezer (2024 Remaster)", which has the original
+  // iconic blue cover. The "Weezer (Deluxe Edition)" listing uses different art.
+  "weezer|bluealbum": "Weezer (2024 Remaster)",
+  "weezer|blue": "Weezer (2024 Remaster)",
   "weezer|greenalbum": "Weezer (Green Album)",
   "weezer|green": "Weezer (Green Album)",
   "weezer|redalbum": "Weezer (Red Album)",
