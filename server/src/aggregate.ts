@@ -13,29 +13,61 @@ type AggregateRawRow = {
 //   Artists  - max 10 picks per submitter, rank 1 -> 10 pts, rank 10 -> 1 pt.
 //   Albums   - max 25 picks per submitter, rank 1 -> 25 pts, rank 25 -> 1 pt.
 // Ties on score broken by vote count, then alphabetical for stability.
+//
+// Grouping uses a normalized key so the following collapse together:
+//   "Is This It?" + "Is This It" + "is this it" -> "isthisit"
+//   "Dark Side of the Moon" + "The Dark Side of the Moon" -> "darksideofthemoon"
+//   "The Strokes" + "Strokes" -> "strokes"
+// This mirrors the normalize() function in itunes.ts.
+
+// Mirror of normalize() in itunes.ts. Strips leading "the ", lowercases, and
+// keeps only alphanumerics. No diacritic stripping because that would require
+// the `unaccent` Postgres extension; ASCII covers our crowd.
+function normalizeExpr(col: string): string {
+  return `regexp_replace(regexp_replace(LOWER(${col}), '^the\\s+', ''), '[^a-z0-9]+', '', 'g')`;
+}
 
 const ARTIST_QUERY = `
+WITH grouped AS (
+  SELECT
+    ${normalizeExpr("artist_name")} AS key,
+    artist_name,
+    rank,
+    image_url
+  FROM artist_picks
+)
 SELECT
-  LOWER(artist_name)                   AS key,
+  key,
   MAX(artist_name)                     AS display_name,
   (ARRAY_AGG(image_url) FILTER (WHERE image_url IS NOT NULL))[1] AS image_url,
   SUM(11 - rank)::INT                  AS score,
   COUNT(*)::INT                        AS votes
-FROM artist_picks
-GROUP BY LOWER(artist_name)
+FROM grouped
+WHERE key <> ''
+GROUP BY key
 ORDER BY score DESC, votes DESC, display_name ASC;
 `;
 
 const ALBUM_QUERY = `
+WITH grouped AS (
+  SELECT
+    ${normalizeExpr("album_name")} || '\u200b' || ${normalizeExpr("artist_name")} AS key,
+    album_name,
+    artist_name,
+    rank,
+    image_url
+  FROM album_picks
+)
 SELECT
-  LOWER(album_name) || '\u200b' || LOWER(artist_name) AS key,
+  key,
   MAX(album_name)                       AS display_name,
   MAX(artist_name)                      AS artist,
   (ARRAY_AGG(image_url) FILTER (WHERE image_url IS NOT NULL))[1] AS image_url,
   SUM(26 - rank)::INT                   AS score,
   COUNT(*)::INT                         AS votes
-FROM album_picks
-GROUP BY LOWER(album_name), LOWER(artist_name)
+FROM grouped
+WHERE key <> ''
+GROUP BY key
 ORDER BY score DESC, votes DESC, display_name ASC;
 `;
 

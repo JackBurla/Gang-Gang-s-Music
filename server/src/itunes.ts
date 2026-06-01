@@ -58,15 +58,51 @@ function upscale(artwork: string | undefined): string | undefined {
   return artwork.replace("100x100", "600x600");
 }
 
-function normalize(s: string): string {
+// Match the SQL normalization in aggregate.ts. Lowercase, strip diacritics,
+// strip leading "the ", keep only [a-z0-9]. So "Is This It?", "Is This It",
+// and "is this it" all collapse to "isthisit"; "The Dark Side of the Moon"
+// and "Dark Side of the Moon" both collapse to "darksideofthemoon".
+export function normalize(s: string): string {
   return s
     .toLowerCase()
     .normalize("NFKD")
-    // strip combining diacritics
     .replace(/[\u0300-\u036f]/g, "")
-    // collapse punctuation/whitespace
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
+    .trim()
+    .replace(/^the\s+/, "")
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+// Famous albums where the popular nickname doesn't match the iTunes title.
+// Keyed by normalized(artist) + normalized(alias). The value is the iTunes
+// `collectionName` we should match against in the discography lookup.
+// Extend this list as you find gaps.
+const ALBUM_ALIASES: Record<string, string> = {
+  // Weezer color albums. iTunes uses "(<color> Album)" for all but the 1994 LP,
+  // which is filed as "Weezer (Deluxe Edition)".
+  "weezer|bluealbum": "Weezer (Deluxe Edition)",
+  "weezer|blue": "Weezer (Deluxe Edition)",
+  "weezer|greenalbum": "Weezer (Green Album)",
+  "weezer|green": "Weezer (Green Album)",
+  "weezer|redalbum": "Weezer (Red Album)",
+  "weezer|red": "Weezer (Red Album)",
+  "weezer|whitealbum": "Weezer (White Album)",
+  "weezer|white": "Weezer (White Album)",
+  "weezer|blackalbum": "Weezer (Black Album)",
+  "weezer|black": "Weezer (Black Album)",
+  "weezer|tealalbum": "Weezer (Teal Album)",
+  "weezer|teal": "Weezer (Teal Album)",
+  // Other classic nicknames.
+  "beatles|whitealbum": "The Beatles",
+  "metallica|blackalbum": "Metallica",
+  "jayz|blackalbum": "The Black Album",
+  "ledzeppelin|iv": "Led Zeppelin IV",
+  "ledzeppelin|zoso": "Led Zeppelin IV",
+  "princeandtherevolution|purplerain": "Purple Rain",
+};
+
+function aliasFor(album: string, artist: string): string | null {
+  const key = `${normalize(artist)}|${normalize(album)}`;
+  return ALBUM_ALIASES[key] ?? null;
 }
 
 // Lightweight TTL cache so the form's live previews don't hammer iTunes.
@@ -152,18 +188,21 @@ function scoreAlbumMatch(target: string, candidate: string): number {
   const c = normalize(candidate);
   if (!t || !c) return 0;
   if (t === c) return 100;
-  // Prefer exact prefix matches, but punish iTunes' " - Single" / " - EP" /
-  // "(Deluxe)" cruft so a vanilla LP wins over a remix or single release of
-  // the same name.
+
+  // Without spaces our normalized strings concatenate words, so we work on
+  // the lowercased-with-spaces variant for "is this a remix/single/etc." style
+  // signals. The penalty list below catches iTunes' usual cruft.
+  const raw = candidate.toLowerCase();
   let score = 0;
   if (c.startsWith(t)) score += 60;
-  if (c.includes(t)) score += 30;
-  if (c.endsWith(" single")) score -= 25;
-  if (c.endsWith(" ep")) score -= 15;
-  if (c.includes(" deluxe")) score -= 5;
-  if (c.includes(" remix")) score -= 20;
-  if (c.includes(" live")) score -= 10;
-  if (c.includes(" instrumental")) score -= 25;
+  else if (c.includes(t)) score += 30;
+  if (raw.endsWith("- single") || raw.endsWith("(single)")) score -= 25;
+  if (raw.endsWith("- ep") || raw.endsWith("(ep)")) score -= 15;
+  if (raw.includes("deluxe")) score -= 5;
+  if (raw.includes("remix")) score -= 20;
+  if (raw.includes("live")) score -= 10;
+  if (raw.includes("instrumental")) score -= 25;
+  if (raw.includes("remaster")) score -= 5;
   return score;
 }
 
@@ -187,6 +226,27 @@ export async function lookupAlbum(
         entity: "album",
         limit: "200",
       });
+
+      // Famous-nickname override (e.g. Weezer "Blue Album" -> "Weezer (Deluxe Edition)").
+      // If we have a known alias for this artist+title, prefer the candidate
+      // whose iTunes title matches the canonical name exactly.
+      const aliasName = aliasFor(albumQ, artistQ);
+      if (aliasName) {
+        const target = normalize(aliasName);
+        const aliasMatch = albums.results.find(
+          (r) =>
+            r.wrapperType === "collection" &&
+            r.collectionName &&
+            normalize(r.collectionName) === target
+        );
+        if (aliasMatch?.artworkUrl100) {
+          return cached(cacheKey, {
+            imageUrl: upscale(aliasMatch.artworkUrl100),
+            matchedName: albumQ,
+          });
+        }
+      }
+
       let best: { score: number; result: ITunesResult } | null = null;
       for (const r of albums.results) {
         if (r.wrapperType !== "collection") continue;
