@@ -71,6 +71,30 @@ GROUP BY key
 ORDER BY score DESC, votes DESC, display_name ASC;
 `;
 
+// "Artists with the most album votes": aggregate every album_pick by its
+// artist (so The Beatles appearing 4 times across people's album lists counts
+// all 4 ranks). Uses the same 26-rank scoring as the album board.
+const ARTISTS_BY_ALBUM_QUERY = `
+WITH grouped AS (
+  SELECT
+    ${normalizeExpr("artist_name")} AS key,
+    artist_name,
+    rank,
+    image_url
+  FROM album_picks
+)
+SELECT
+  key,
+  MAX(artist_name)                     AS display_name,
+  (ARRAY_AGG(image_url) FILTER (WHERE image_url IS NOT NULL))[1] AS image_url,
+  SUM(26 - rank)::INT                  AS score,
+  COUNT(*)::INT                        AS votes
+FROM grouped
+WHERE key <> ''
+GROUP BY key
+ORDER BY score DESC, votes DESC, display_name ASC;
+`;
+
 function withRanksAndTies(rows: AggregateRawRow[]): AggregateRow[] {
   // Assign dense rank by score (ties share the same rank). Then take everyone
   // up to and including the row at logical position 10, so ties at 10 are kept.
@@ -109,14 +133,16 @@ export async function getAggregate(): Promise<AggregateResponse> {
   const now = Date.now();
   if (cache && cache.expires > now) return cache.value;
 
-  const [artistRows, albumRows] = await Promise.all([
+  const [artistRows, albumRows, artistsByAlbumRows] = await Promise.all([
     pool.query<AggregateRawRow>(ARTIST_QUERY),
     pool.query<AggregateRawRow>(ALBUM_QUERY),
+    pool.query<AggregateRawRow>(ARTISTS_BY_ALBUM_QUERY),
   ]);
 
   const value: AggregateResponse = {
     artists: withRanksAndTies(artistRows.rows),
     albums: withRanksAndTies(albumRows.rows),
+    artistsByAlbumScore: withRanksAndTies(artistsByAlbumRows.rows),
   };
 
   cache = { value, expires: now + CACHE_MS };

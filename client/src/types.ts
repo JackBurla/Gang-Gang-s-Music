@@ -36,4 +36,5 @@ export type AggregateRow = {
 export type AggregateResponse = {
   artists: AggregateRow[];
   albums: AggregateRow[];
+  artistsByAlbumScore: AggregateRow[];
 };

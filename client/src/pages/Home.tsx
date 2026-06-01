@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { fetchAggregate } from "../api";
+import ArtistVotesTable from "../components/ArtistVotesTable";
 import Leaderboard from "../components/Leaderboard";
 import type { AggregateResponse } from "../types";
 
@@ -65,6 +66,20 @@ export default function Home() {
         kind="album"
         emptyMessage={"No albums yet. Expect ties \u2014 that's encouraged."}
       />
+
+      <section className="space-y-6">
+        <header className="space-y-2">
+          <div className="pill inline-block">album voting power</div>
+          <h2 className="wordmark text-3xl text-ink-100 sm:text-4xl">
+            Artists with the Most Votes
+          </h2>
+          <p className="max-w-2xl text-sm text-ink-300">
+            Every album pick counts toward its artist. Rank 1 album = 25 pts,
+            rank 25 = 1 pt. Same scoring as the album board, summed by artist.
+          </p>
+        </header>
+        <ArtistVotesTable rows={data?.artistsByAlbumScore ?? []} />
+      </section>
     </div>
   );
 }
