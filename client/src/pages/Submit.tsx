@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
-import { fetchPreview, postSubmission } from "../api";
+import { fetchPreview, fetchSubmission, postSubmission } from "../api";
 import { getEditToken, saveEditToken } from "../editToken";
 
 const ARTIST_SLOTS = 10;
@@ -16,7 +16,10 @@ function makeEmpty<T>(count: number, make: () => T): T[] {
 
 export default function Submit() {
   const navigate = useNavigate();
-  const [name, setName] = useState("");
+  const [searchParams] = useSearchParams();
+  const initialName = searchParams.get("name") ?? "";
+
+  const [name, setName] = useState(initialName);
   const [artists, setArtists] = useState<string[]>(
     makeEmpty(ARTIST_SLOTS, () => "")
   );
@@ -25,8 +28,71 @@ export default function Submit() {
   );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   const editToken = useMemo(() => getEditToken(name), [name]);
+
+  // Pre-fill the form with existing picks when the name matches a token in
+  // localStorage. Debounced so brief typos in the name field don't clear the
+  // form. Also clears the form if the user changes the name away from a loaded
+  // submission, to avoid accidentally saving someone else's picks under a new
+  // name.
+  useEffect(() => {
+    const trimmed = name.trim();
+    const lower = trimmed.toLowerCase();
+    if (loadedFor === lower) return;
+
+    const handle = window.setTimeout(() => {
+      if (!trimmed) {
+        if (loadedFor) {
+          setArtists(makeEmpty(ARTIST_SLOTS, () => ""));
+          setAlbums(makeEmpty(MIN_ALBUM_SLOTS, () => ({ album: "", artist: "" })));
+          setLoadedFor(null);
+        }
+        return;
+      }
+
+      const token = getEditToken(trimmed);
+      if (!token) {
+        if (loadedFor) {
+          setArtists(makeEmpty(ARTIST_SLOTS, () => ""));
+          setAlbums(makeEmpty(MIN_ALBUM_SLOTS, () => ({ album: "", artist: "" })));
+          setLoadedFor(null);
+        }
+        return;
+      }
+
+      setLoading(true);
+      fetchSubmission(trimmed)
+        .then((sub) => {
+          const padArtists = sub.artists.map((a) => a.name);
+          while (padArtists.length < ARTIST_SLOTS) padArtists.push("");
+          setArtists(padArtists.slice(0, ARTIST_SLOTS));
+
+          const incomingAlbums = sub.albums.map((a) => ({
+            album: a.album,
+            artist: a.artist,
+          }));
+          // If they originally submitted more than MIN_ALBUM_SLOTS, render all
+          // of them so every pick is editable.
+          const targetCount = Math.max(MIN_ALBUM_SLOTS, incomingAlbums.length);
+          const padded = incomingAlbums.slice();
+          while (padded.length < targetCount) padded.push({ album: "", artist: "" });
+          setAlbums(padded.slice(0, MAX_ALBUM_SLOTS));
+
+          setLoadedFor(lower);
+        })
+        .catch(() => {
+          // Stored token but API can't find the submission. Leave form alone.
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+    }, 350);
+
+    return () => window.clearTimeout(handle);
+  }, [name, loadedFor]);
 
   const filledArtists = artists.filter((a) => a.trim().length > 0);
   const filledAlbums = albums.filter((a) => a.album.trim().length > 0);
@@ -61,18 +127,30 @@ export default function Submit() {
     }
   }
 
+  const isEditing = loadedFor !== null && loadedFor === name.trim().toLowerCase();
+
   return (
     <div className="space-y-10">
       <section className="space-y-3 pt-4">
-        <div className="pill inline-block">submit</div>
+        <div className="pill inline-block">{isEditing ? "edit" : "submit"}</div>
         <h1 className="wordmark text-4xl leading-tight text-ink-100 sm:text-5xl">
-          Drop your picks.
+          {isEditing ? `Editing ${name}'s picks.` : "Drop your picks."}
         </h1>
         <p className="max-w-2xl text-ink-200">
-          Your top 10 in order &mdash; rank 1 is the GOAT, rank 10 is still
-          undeniable. Album art and artist photos auto-populate from iTunes. If
-          you&rsquo;re editing your existing list, use the same name and same
-          browser.
+          {isEditing ? (
+            <>
+              Change whatever you want and hit <strong>Save changes</strong> at
+              the bottom. Leave the rest alone &mdash; you don&rsquo;t have to
+              retype anything.
+            </>
+          ) : (
+            <>
+              Your top 10 in order &mdash; rank 1 is the GOAT, rank 10 is still
+              undeniable. Album art and artist photos auto-populate from
+              iTunes. If you&rsquo;re editing your existing list, use the same
+              name and same browser.
+            </>
+          )}
         </p>
       </section>
 
@@ -91,9 +169,20 @@ export default function Submit() {
             autoComplete="off"
             required
           />
-          {editToken && (
+          {loading && (
+            <p className="mt-2 text-xs text-ink-300">
+              Loading your existing picks&hellip;
+            </p>
+          )}
+          {!loading && isEditing && (
             <p className="mt-2 text-xs text-accent">
-              Editing your existing picks for &ldquo;{name}&rdquo;.
+              Your picks are pre-filled below.
+            </p>
+          )}
+          {!loading && editToken && !isEditing && (
+            <p className="mt-2 text-xs text-ink-300">
+              We have a saved edit token for this name. Click out of the field
+              to load your picks.
             </p>
           )}
         </div>
@@ -173,7 +262,7 @@ export default function Submit() {
           <button type="submit" disabled={!canSubmit} className="btn-primary">
             {submitting
               ? "Submitting\u2026"
-              : editToken
+              : isEditing
                 ? "Save changes"
                 : "Submit picks"}
           </button>

@@ -54,7 +54,10 @@ export default function UserPage() {
           We couldn&rsquo;t find &ldquo;{name}&rdquo;.
         </h1>
         <p className="text-ink-200">{error}</p>
-        <Link to="/submit" className="btn-primary">
+        <Link
+          to={`/submit?name=${encodeURIComponent(name)}`}
+          className="btn-primary"
+        >
           Add picks for {name}
         </Link>
       </div>
@@ -88,7 +91,10 @@ export default function UserPage() {
             >
               {refreshing ? "Refreshing\u2026" : "Refresh artwork"}
             </button>
-            <Link to="/submit" className="btn-ghost">
+            <Link
+              to={`/submit?name=${encodeURIComponent(name)}`}
+              className="btn-ghost"
+            >
               Edit my picks
             </Link>
           </div>
