@@ -31,11 +31,10 @@ export default function Home() {
       <section className="space-y-4 pt-4">
         <div className="pill inline-block">the aggregate</div>
         <h1 className="wordmark text-4xl leading-tight text-ink-100 sm:text-6xl">
-          Everyone&rsquo;s picks, collected.
+          Praise the Beatles. Praise Born.
         </h1>
         <p className="max-w-2xl text-base text-ink-200 sm:text-lg">
-          A running tally of the gang&rsquo;s greatest artists and albums.
-          Position-weighted, ties allowed. Want in?{" "}
+          Jesus, Joe Mazulla, Joe Biden.{" "}
           <Link
             to="/submit"
             className="text-accent underline-offset-4 hover:underline"
