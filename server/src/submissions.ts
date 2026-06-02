@@ -217,6 +217,37 @@ export async function getSubmission(name: string): Promise<Submission | null> {
     ),
   ]);
 
+  // Lazy backfill: re-resolve any pick with a null image_url. Picks that were
+  // submitted at a moment when iTunes returned no match would otherwise stay
+  // broken forever. If iTunes has it now, we patch the DB row in-place so this
+  // self-heals on the first load and doesn't repeat on subsequent loads.
+  let backfilled = false;
+  await Promise.all([
+    ...artistsRes.rows.map(async (r) => {
+      if (r.image_url != null || !r.artist_name.trim()) return;
+      const art = await lookupArtist(r.artist_name);
+      if (!art.imageUrl) return;
+      r.image_url = art.imageUrl;
+      backfilled = true;
+      await pool.query(
+        "UPDATE artist_picks SET image_url = $1 WHERE submission_id = $2 AND rank = $3",
+        [art.imageUrl, sub.id, r.rank]
+      );
+    }),
+    ...albumsRes.rows.map(async (r) => {
+      if (r.image_url != null || !r.album_name.trim()) return;
+      const art = await lookupAlbum(r.album_name, r.artist_name);
+      if (!art.imageUrl) return;
+      r.image_url = art.imageUrl;
+      backfilled = true;
+      await pool.query(
+        "UPDATE album_picks SET image_url = $1 WHERE submission_id = $2 AND rank = $3",
+        [art.imageUrl, sub.id, r.rank]
+      );
+    }),
+  ]);
+  if (backfilled) invalidateAggregateCache();
+
   // Apply the same display-time overrides that the home aggregate uses, so
   // user pages don't "revert" to the originally-stored iTunes URLs.
   const artists = await Promise.all(

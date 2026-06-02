@@ -332,7 +332,7 @@ export default function Submit() {
         <section className="space-y-4">
           <div className="flex flex-wrap items-end justify-between gap-2">
             <h2 className="wordmark text-2xl text-ink-100">
-              Top 10 Albums of All Time
+              Top {Math.max(filledAlbums.length, MIN_ALBUM_SLOTS)} Albums of All Time
             </h2>
             <span className="text-xs text-ink-300">
               {MIN_ALBUM_SLOTS} required &middot; up to {MAX_ALBUM_SLOTS} allowed
