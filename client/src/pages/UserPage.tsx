@@ -105,7 +105,7 @@ export default function UserPage() {
         <header className="space-y-2">
           <div className="pill inline-block">artists</div>
           <h2 className="wordmark text-3xl text-ink-100 sm:text-4xl">
-            {sub.name}&rsquo;s 10 Greatest Artists of All Time
+            {sub.name}&rsquo;s {sub.artists.length} Greatest Artists of All Time
           </h2>
         </header>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
