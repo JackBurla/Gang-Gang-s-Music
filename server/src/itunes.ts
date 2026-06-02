@@ -355,10 +355,23 @@ export async function lookupAlbum(
         }
       }
       if (best && best.score >= 30) {
-        return cached(cacheKey, {
-          imageUrl: upscale(best.result.artworkUrl100),
-          matchedName: best.result.collectionName ?? albumQ,
-        });
+        // iTunes' artist-discography response sometimes omits artworkUrl100
+        // on individual collections (a regional/edge-cache quirk we've seen
+        // from Railway's IPs). A direct lookup by collectionId reliably
+        // returns the artwork, so retry that way if needed.
+        let artwork = best.result.artworkUrl100;
+        if (!artwork && best.result.collectionId) {
+          const detail = await lookup({
+            id: String(best.result.collectionId),
+          });
+          artwork = detail.results[0]?.artworkUrl100;
+        }
+        if (artwork) {
+          return cached(cacheKey, {
+            imageUrl: upscale(artwork),
+            matchedName: best.result.collectionName ?? albumQ,
+          });
+        }
       }
     }
   }
@@ -375,6 +388,7 @@ export async function lookupAlbum(
   let best: { score: number; result: ITunesResult } | null = null;
   for (const r of generic.results) {
     if (!r.collectionName) continue;
+    if (!r.artworkUrl100) continue;
     // If we have an artist, require it to roughly match the candidate's artist
     // name; this filters out same-titled albums by other people.
     if (artistQ) {
