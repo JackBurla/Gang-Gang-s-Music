@@ -60,7 +60,7 @@ export default function Home() {
 
       <Leaderboard
         kicker="aggregate"
-        title="Top 10 Albums of All Time"
+        title="Top 20 Albums of All Time"
         rows={data?.albums ?? []}
         kind="album"
         emptyMessage={"No albums yet. Expect ties \u2014 that's encouraged."}

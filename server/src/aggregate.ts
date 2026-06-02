@@ -99,9 +99,13 @@ GROUP BY key
 ORDER BY score DESC, votes DESC, display_name ASC;
 `;
 
-function withRanksAndTies(rows: AggregateRawRow[]): AggregateRow[] {
+function withRanksAndTies(
+  rows: AggregateRawRow[],
+  limit: number
+): AggregateRow[] {
   // Assign dense rank by score (ties share the same rank). Then take everyone
-  // up to and including the row at logical position 10, so ties at 10 are kept.
+  // up to and including the row at logical position `limit`, so ties at the
+  // cutoff are kept.
   if (rows.length === 0) return [];
 
   const out: AggregateRow[] = [];
@@ -116,7 +120,7 @@ function withRanksAndTies(rows: AggregateRawRow[]): AggregateRow[] {
       lastScore = row.score;
     }
 
-    if (currentRank > 10) break;
+    if (currentRank > limit) break;
 
     out.push({
       rank: currentRank,
@@ -169,9 +173,9 @@ export async function getAggregate(): Promise<AggregateResponse> {
   ]);
 
   const [artists, albums, artistsByAlbumScore] = await Promise.all([
-    applyArtistImageOverrides(withRanksAndTies(artistRows.rows)),
-    applyAlbumImageOverrides(withRanksAndTies(albumRows.rows)),
-    applyArtistImageOverrides(withRanksAndTies(artistsByAlbumRows.rows)),
+    applyArtistImageOverrides(withRanksAndTies(artistRows.rows, 10)),
+    applyAlbumImageOverrides(withRanksAndTies(albumRows.rows, 20)),
+    applyArtistImageOverrides(withRanksAndTies(artistsByAlbumRows.rows, 10)),
   ]);
 
   const value: AggregateResponse = {
