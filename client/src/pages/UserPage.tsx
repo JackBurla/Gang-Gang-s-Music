@@ -1,19 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { fetchSubmission, refreshArtwork } from "../api";
+import { fetchSubmission } from "../api";
 import RankedCard from "../components/RankedCard";
-import { getEditToken } from "../editToken";
 import type { Submission } from "../types";
-
-// Friend-grade trust: anyone can edit or refresh anyone else's picks. We still
-// pass the locally-saved token if one is present, but the server ignores it.
 
 export default function UserPage() {
   const { name = "" } = useParams<{ name: string }>();
   const [sub, setSub] = useState<Submission | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -32,21 +27,6 @@ export default function UserPage() {
       cancelled = true;
     };
   }, [name]);
-
-  async function onRefreshArtwork() {
-    setRefreshing(true);
-    try {
-      const { submission } = await refreshArtwork(
-        name,
-        getEditToken(name) ?? ""
-      );
-      setSub(submission);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Refresh failed.");
-    } finally {
-      setRefreshing(false);
-    }
-  }
 
   if (error) {
     return (
@@ -83,15 +63,6 @@ export default function UserPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={onRefreshArtwork}
-            disabled={refreshing}
-            className="btn-ghost disabled:cursor-not-allowed disabled:opacity-50"
-            title="Re-run the iTunes lookups for every pick"
-          >
-            {refreshing ? "Refreshing\u2026" : "Refresh artwork"}
-          </button>
           <Link
             to={`/submit?name=${encodeURIComponent(name)}`}
             className="btn-ghost"

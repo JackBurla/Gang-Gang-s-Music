@@ -8,7 +8,6 @@ import {
   HttpError,
   getSubmission,
   listSubmissions,
-  refreshSubmissionArtwork,
   upsertSubmission,
   validate,
 } from "./submissions.js";
@@ -61,17 +60,6 @@ app.post("/api/submissions", async (req, res, next) => {
     const input = validate(req.body);
     const { submission, editToken } = await upsertSubmission(input);
     res.json({ submission, editToken });
-  } catch (err) {
-    next(err);
-  }
-});
-
-app.post("/api/submissions/:name/refresh-artwork", async (req, res, next) => {
-  try {
-    const editToken =
-      typeof req.body?.editToken === "string" ? req.body.editToken.trim() : "";
-    const submission = await refreshSubmissionArtwork(req.params.name, editToken);
-    res.json({ submission });
   } catch (err) {
     next(err);
   }
