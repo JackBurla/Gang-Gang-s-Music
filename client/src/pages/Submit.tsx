@@ -33,11 +33,10 @@ export default function Submit() {
 
   const editToken = useMemo(() => getEditToken(name), [name]);
 
-  // Pre-fill the form with existing picks when the name matches a token in
-  // localStorage. Debounced so brief typos in the name field don't clear the
-  // form. Also clears the form if the user changes the name away from a loaded
-  // submission, to avoid accidentally saving someone else's picks under a new
-  // name.
+  // Pre-fill the form with existing picks whenever the typed name matches an
+  // existing submission, regardless of which browser is being used. This is
+  // friend-grade trust: anyone who knows the name can edit. Debounced so brief
+  // typos in the name field don't clear the form.
   useEffect(() => {
     const trimmed = name.trim();
     const lower = trimmed.toLowerCase();
@@ -45,16 +44,6 @@ export default function Submit() {
 
     const handle = window.setTimeout(() => {
       if (!trimmed) {
-        if (loadedFor) {
-          setArtists(makeEmpty(ARTIST_SLOTS, () => ""));
-          setAlbums(makeEmpty(MIN_ALBUM_SLOTS, () => ({ album: "", artist: "" })));
-          setLoadedFor(null);
-        }
-        return;
-      }
-
-      const token = getEditToken(trimmed);
-      if (!token) {
         if (loadedFor) {
           setArtists(makeEmpty(ARTIST_SLOTS, () => ""));
           setAlbums(makeEmpty(MIN_ALBUM_SLOTS, () => ({ album: "", artist: "" })));
@@ -84,7 +73,15 @@ export default function Submit() {
           setLoadedFor(lower);
         })
         .catch(() => {
-          // Stored token but API can't find the submission. Leave form alone.
+          // No submission with this name (likely 404). Clear any previously
+          // pre-filled picks so the user starts fresh.
+          if (loadedFor) {
+            setArtists(makeEmpty(ARTIST_SLOTS, () => ""));
+            setAlbums(
+              makeEmpty(MIN_ALBUM_SLOTS, () => ({ album: "", artist: "" }))
+            );
+            setLoadedFor(null);
+          }
         })
         .finally(() => {
           setLoading(false);
@@ -147,8 +144,8 @@ export default function Submit() {
             <>
               Your top 10 in order &mdash; rank 1 is the GOAT, rank 10 is still
               undeniable. Album art and artist photos auto-populate from
-              iTunes. If you&rsquo;re editing your existing list, use the same
-              name and same browser.
+              iTunes. To edit an existing list, just type the same name &mdash;
+              any browser, any device.
             </>
           )}
         </p>
@@ -171,18 +168,12 @@ export default function Submit() {
           />
           {loading && (
             <p className="mt-2 text-xs text-ink-300">
-              Loading your existing picks&hellip;
+              Looking up existing picks&hellip;
             </p>
           )}
           {!loading && isEditing && (
             <p className="mt-2 text-xs text-accent">
-              Your picks are pre-filled below.
-            </p>
-          )}
-          {!loading && editToken && !isEditing && (
-            <p className="mt-2 text-xs text-ink-300">
-              We have a saved edit token for this name. Click out of the field
-              to load your picks.
+              Existing picks pre-filled below &mdash; edit and save.
             </p>
           )}
         </div>

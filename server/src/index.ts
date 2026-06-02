@@ -70,10 +70,6 @@ app.post("/api/submissions/:name/refresh-artwork", async (req, res, next) => {
   try {
     const editToken =
       typeof req.body?.editToken === "string" ? req.body.editToken.trim() : "";
-    if (!editToken) {
-      res.status(400).json({ error: "editToken is required." });
-      return;
-    }
     const submission = await refreshSubmissionArtwork(req.params.name, editToken);
     res.json({ submission });
   } catch (err) {

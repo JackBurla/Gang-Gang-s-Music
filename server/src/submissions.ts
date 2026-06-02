@@ -113,19 +113,11 @@ export async function upsertSubmission(input: SubmissionInput): Promise<{
     [input.name]
   );
 
-  let editToken: string;
-  if (existing.rows.length > 0) {
-    const row = existing.rows[0]!;
-    if (!input.editToken || input.editToken !== row.edit_token) {
-      throw new HttpError(
-        409,
-        `Someone already submitted as "${input.name}". If that's you and you're on the same device, your edit token should be saved automatically. Otherwise, pick a different name.`
-      );
-    }
-    editToken = row.edit_token;
-  } else {
-    editToken = genToken();
-  }
+  // Friend-grade trust: anyone who knows the name can edit. The edit_token is
+  // no longer a credential check; we keep it stable across edits so the
+  // original submitter's localStorage stays predictable.
+  const editToken =
+    existing.rows.length > 0 ? existing.rows[0]!.edit_token : genToken();
 
   const enriched = await enrichSubmission(input);
 
@@ -140,7 +132,7 @@ export async function upsertSubmission(input: SubmissionInput): Promise<{
       INSERT INTO submissions (name, edit_token)
       VALUES ($1, $2)
       ON CONFLICT (name)
-      DO UPDATE SET updated_at = NOW(), edit_token = EXCLUDED.edit_token
+      DO UPDATE SET updated_at = NOW()
       RETURNING id, name, created_at, updated_at;
       `,
       [input.name, editToken]
@@ -194,22 +186,16 @@ export async function listSubmissions(): Promise<SubmissionSummary[]> {
 
 export async function refreshSubmissionArtwork(
   name: string,
-  editToken: string
+  _editToken: string
 ): Promise<Submission> {
-  const existing = await pool.query<{ id: number; edit_token: string }>(
-    "SELECT id, edit_token FROM submissions WHERE LOWER(name) = LOWER($1) LIMIT 1",
+  const existing = await pool.query<{ id: number }>(
+    "SELECT id FROM submissions WHERE LOWER(name) = LOWER($1) LIMIT 1",
     [name]
   );
   if (existing.rows.length === 0) {
     throw new HttpError(404, "Submission not found.");
   }
   const row = existing.rows[0]!;
-  if (row.edit_token !== editToken) {
-    throw new HttpError(
-      403,
-      "Edit token doesn't match. Try refreshing from the same browser you originally submitted from."
-    );
-  }
 
   const current = await getSubmission(name);
   if (!current) {
