@@ -124,6 +124,8 @@ export const ARTIST_IMAGE_OVERRIDES: Record<string, string> = {
   ye: "Graduation",
   radiohead: "Kid A",
   beatles: "Sgt. Pepper's Lonely Hearts Club Band",
+  tylerthecreator: "Flower Boy",
+  tyler: "Flower Boy",
 };
 
 export function artistImageOverrideAlbum(artistName: string): string | null {
