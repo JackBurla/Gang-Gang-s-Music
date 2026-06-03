@@ -103,7 +103,14 @@ app.get("/api/debug/itunes-album", async (req, res, next) => {
         x.wrapperType === "collection" &&
         x.collectionName?.toLowerCase().includes(album.toLowerCase())
     );
-    res.json({ artistId, matches });
+    const allCollections = r2.results
+      .filter((x) => x.wrapperType === "collection")
+      .map((x) => ({
+        name: x.collectionName,
+        id: x.collectionId,
+        hasArt: Boolean(x.artworkUrl100),
+      }));
+    res.json({ artistId, matches, allCollections });
   } catch (err) {
     next(err);
   }
