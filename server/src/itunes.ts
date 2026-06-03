@@ -198,7 +198,13 @@ const cache = new Map<string, { value: Artwork; expires: number }>();
 const CACHE_TTL_MS = 15 * 60 * 1000;
 
 function cached<T extends Artwork>(key: string, value: T): T {
-  cache.set(key, { value, expires: Date.now() + CACHE_TTL_MS });
+  // Only cache successful lookups. iTunes is occasionally flaky (some IPs/
+  // moments return album records without artworkUrl100); caching a null for
+  // 15 minutes would lock in the bad result. Negative lookups are cheap to
+  // retry next time the caller asks.
+  if (value.imageUrl) {
+    cache.set(key, { value, expires: Date.now() + CACHE_TTL_MS });
+  }
   return value;
 }
 

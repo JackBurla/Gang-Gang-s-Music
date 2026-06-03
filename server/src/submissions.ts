@@ -3,6 +3,7 @@ import { pool, withTx } from "./db.js";
 import {
   lookupAlbum,
   lookupArtist,
+  normalize,
   resolveAlbumOverrideUrl,
   resolveArtistOverrideUrl,
 } from "./itunes.js";
@@ -119,7 +120,54 @@ export async function upsertSubmission(input: SubmissionInput): Promise<{
   const editToken =
     existing.rows.length > 0 ? existing.rows[0]!.edit_token : genToken();
 
+  // Fetch existing image_urls so we can preserve known-good ones if the new
+  // iTunes lookup happens to fail (iTunes can be intermittently flaky for
+  // certain albums). Keyed by normalized name to survive minor edits.
+  const oldArtistUrls = new Map<string, string>();
+  const oldAlbumUrls = new Map<string, string>();
+  if (existing.rows.length > 0) {
+    const submissionId = existing.rows[0]!.id;
+    const [oldArtists, oldAlbums] = await Promise.all([
+      pool.query<{ artist_name: string; image_url: string | null }>(
+        "SELECT artist_name, image_url FROM artist_picks WHERE submission_id = $1",
+        [submissionId]
+      ),
+      pool.query<{
+        album_name: string;
+        artist_name: string;
+        image_url: string | null;
+      }>(
+        "SELECT album_name, artist_name, image_url FROM album_picks WHERE submission_id = $1",
+        [submissionId]
+      ),
+    ]);
+    for (const r of oldArtists.rows) {
+      if (r.image_url) oldArtistUrls.set(normalize(r.artist_name), r.image_url);
+    }
+    for (const r of oldAlbums.rows) {
+      if (r.image_url) {
+        const key = `${normalize(r.album_name)}|${normalize(r.artist_name)}`;
+        oldAlbumUrls.set(key, r.image_url);
+      }
+    }
+  }
+
   const enriched = await enrichSubmission(input);
+
+  // Fall back to previously-stored URLs when the fresh iTunes lookup returned
+  // nothing. Prevents flaky iTunes responses from nuking known-good artwork.
+  for (const a of enriched.artists) {
+    if (a.imageUrl != null) continue;
+    const old = oldArtistUrls.get(normalize(a.name));
+    if (old) a.imageUrl = old;
+  }
+  for (const a of enriched.albums) {
+    if (a.imageUrl != null) continue;
+    const old = oldAlbumUrls.get(
+      `${normalize(a.album)}|${normalize(a.artist)}`
+    );
+    if (old) a.imageUrl = old;
+  }
 
   const submission = await withTx(async (client) => {
     const ins = await client.query<{
