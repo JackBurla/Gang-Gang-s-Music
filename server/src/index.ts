@@ -65,64 +65,6 @@ app.post("/api/submissions", async (req, res, next) => {
   }
 });
 
-// Temporary diagnostic: dumps raw iTunes responses for a given artist+album
-// so we can see what Railway's IP is actually being served. Safe to remove.
-app.get("/api/debug/itunes-album", async (req, res, next) => {
-  try {
-    const album = String(req.query.album ?? "");
-    const artist = String(req.query.artist ?? "");
-    const limit = String(req.query.limit ?? "200");
-    if (!album || !artist) {
-      res.status(400).json({ error: "album and artist required" });
-      return;
-    }
-    const r1 = await fetch(
-      `https://itunes.apple.com/search?term=${encodeURIComponent(
-        artist
-      )}&entity=musicArtist&attribute=artistTerm&limit=1`
-    ).then((r) => r.json() as Promise<{ results: { artistId?: number }[] }>);
-    const artistId = r1.results?.[0]?.artistId;
-    if (!artistId) {
-      res.json({ stage: "findArtistId", r1 });
-      return;
-    }
-    const lookupUrl = `https://itunes.apple.com/lookup?id=${artistId}&entity=album&limit=${limit}`;
-    const lookupRes = await fetch(lookupUrl);
-    const r2 = (await lookupRes.json()) as {
-      resultCount?: number;
-      results: {
-        wrapperType?: string;
-        collectionName?: string;
-        collectionId?: number;
-        artworkUrl100?: string;
-      }[];
-    };
-    const matches = r2.results.filter(
-      (x) =>
-        x.wrapperType === "collection" &&
-        x.collectionName?.toLowerCase().includes(album.toLowerCase())
-    );
-    const allCollections = r2.results
-      .filter((x) => x.wrapperType === "collection")
-      .map((x) => ({
-        name: x.collectionName,
-        id: x.collectionId,
-        hasArt: Boolean(x.artworkUrl100),
-      }));
-    res.json({
-      artistId,
-      lookupUrl,
-      status: lookupRes.status,
-      resultCount: r2.resultCount,
-      totalResults: r2.results.length,
-      matches,
-      allCollections,
-    });
-  } catch (err) {
-    next(err);
-  }
-});
-
 app.get("/api/aggregate", async (_req, res, next) => {
   try {
     res.json(await getAggregate());
