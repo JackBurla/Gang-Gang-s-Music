@@ -65,6 +65,50 @@ app.post("/api/submissions", async (req, res, next) => {
   }
 });
 
+// Temporary diagnostic: dumps raw iTunes responses for a given artist+album
+// so we can see what Railway's IP is actually being served. Safe to remove.
+app.get("/api/debug/itunes-album", async (req, res, next) => {
+  try {
+    const album = String(req.query.album ?? "");
+    const artist = String(req.query.artist ?? "");
+    if (!album || !artist) {
+      res.status(400).json({ error: "album and artist required" });
+      return;
+    }
+    const r1 = await fetch(
+      `https://itunes.apple.com/search?term=${encodeURIComponent(
+        artist
+      )}&entity=musicArtist&attribute=artistTerm&limit=1`
+    ).then((r) => r.json() as Promise<{ results: { artistId?: number }[] }>);
+    const artistId = r1.results?.[0]?.artistId;
+    if (!artistId) {
+      res.json({ stage: "findArtistId", r1 });
+      return;
+    }
+    const r2 = await fetch(
+      `https://itunes.apple.com/lookup?id=${artistId}&entity=album&limit=200`
+    ).then(
+      (r) =>
+        r.json() as Promise<{
+          results: {
+            wrapperType?: string;
+            collectionName?: string;
+            collectionId?: number;
+            artworkUrl100?: string;
+          }[];
+        }>
+    );
+    const matches = r2.results.filter(
+      (x) =>
+        x.wrapperType === "collection" &&
+        x.collectionName?.toLowerCase().includes(album.toLowerCase())
+    );
+    res.json({ artistId, matches });
+  } catch (err) {
+    next(err);
+  }
+});
+
 app.get("/api/aggregate", async (_req, res, next) => {
   try {
     res.json(await getAggregate());
